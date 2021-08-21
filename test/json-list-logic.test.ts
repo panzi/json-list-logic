@@ -34,7 +34,7 @@ describe('parse', () => {
     });
 
     it(`code5.jll`, () => {
-        expect(parseLogic(code5)).toEqual([ 'map', [ 'var', 'values' ], [ 'fn', [], [ '+', ['var', 1], 1 ] ] ]);
+        expect(parseLogic(code5)).toEqual([ 'map', [ 'var', 'values' ], [ 'fn', [], [ '+', ['arg', 1], 1 ] ] ]);
     });
 
     it(`code6.jll`, () => {
@@ -95,7 +95,7 @@ describe('exec', () => {
     });
 
     it(`fn`, () => {
-        expect(execLogic(['map', ['array', 1, 2, 3], ['fn', ['-', ['var', 1], 2]]])).toEqual([-1, 0, 1]);
+        expect(execLogic(['map', ['array', 1, 2, 3], ['fn', ['-', ['arg', 1], 2]]])).toEqual([-1, 0, 1]);
     });
 
     it(`partial`, () => {
@@ -116,3 +116,4 @@ describe('exec', () => {
         expect(execLogic([fib, fib, 12] as any, {}, { allowTuringComplete: true })).toBe(144);
     });
 });
+

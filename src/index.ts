@@ -15,7 +15,7 @@ export interface Scope {
 }
 
 const KEYWORDS = new Set<string>([
-    'fn', 'var', 'if', 'and', 'or', '??', 'partial',
+    'fn', 'var', 'arg', 'if', 'and', 'or', '??', 'partial',
     'Infinity', 'NaN', 'null', 'true', 'false',
 ]);
 
@@ -179,22 +179,38 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     // object
     keys: Object.keys,
     items(obj: any) {
-        const items: [string, any][] = [];
-        for (const key in obj) {
-            items.push([key, obj[key]]);
+        const items: [string|number, any][] = [];
+        if (Array.isArray(obj)) {
+            for (let index = 0; index < obj.length; ++ index) {
+                items.push([index, obj[index]]);
+            }
+        } else if (obj) {
+            for (const key in obj) {
+                items.push([key, obj[key]]);
+            }
         }
         return items;
     },
     values: Object.values ?? ((obj: any) => {
+        if (Array.isArray(obj)) {
+            return obj;
+        }
         const values: string[] = [];
-        for (const key in obj) {
-            values.push(obj[key]);
+        if (obj) {
+            for (const key in obj) {
+                values.push(obj[key]);
+            }
         }
         return values;
     }),
     isEmpty(obj: any) {
-        for (const _ in obj) {
-            return false;
+        if (Array.isArray(obj)) {
+            return obj.length === 0;
+        }
+        if (obj) {
+            for (const _ in obj) {
+                return false;
+            }
         }
         return true;
     },
@@ -202,39 +218,46 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     hasOwnProperty: Object.prototype.hasOwnProperty.call.bind(Object.prototype.hasOwnProperty),
 
     // string
-    substr: (str: any, start: any, length: any) => String(str).substr(start, length),
+    substr: (str: any, start: number, length: number) => String(str).substr(start, length),
     parseJSON: JSON.parse,
     stringify: JSON.stringify,
 
     // array+string
-    includes: (items: any, item: any) => items?.includes(item) ?? false,
-    slice: (items: any, start: any, end: any) => items?.slice(start, end),
-    length: (items: any) => items?.length ?? 0,
-    head: (items: any) => items?.[0],
-    tail: (items: any) => items?.slice(1),
+    includes: (items: any[]|string, item: any) => items?.includes?.(item) ?? false,
+    slice: (items: any[]|string, start: number, end: number) => items?.slice?.(start, end) ?? null,
+    length: (items: any[]|string) => items?.length ?? 0,
+    head: (items: any[]|string) => items?.[0] ?? null,
+    tail: (items: any[]|string) => items?.slice?.(1),
 
     // arrays
-    every: (items: any[], func: any) => items?.every(item => isTruthy(func(item))) ?? false,
-    some: (items: any[], func: any) => items?.some(item => isTruthy(func(item))) ?? false,
-    none: (items: any[], func: any) => !items?.some(item => isTruthy(func(item))) ?? false,
+    every: (items: any[], func: any) => items?.every?.(item => isTruthy(func(item))) ?? true,
+    some: (items: any[], func: any) => items?.some?.(item => isTruthy(func(item))) ?? false,
+    none: (items: any[], func: any) => !items?.some?.(item => isTruthy(func(item))) ?? true,
 
-    join: (items: any[], delim: any) => items?.join(delim),
+    join: (items: any[], delim: any) => items?.join?.(delim) ?? '',
     concat: (...args: any[]) => [].concat(...args),
     flatten: (items: any[]) => [].concat(...items),
 
-    map: (items: any[], func: any) => items?.map(func) ?? [],
-    reduce: (items: any[], func: any, init?: any) => items?.reduce(func, init ?? null),
-    filter: (items: any[], func: any) => items?.filter(item => isTruthy(func(item))),
+    map: <Item, Result>(items: Item[], func: (arg: Item) => Result): Result[] => items?.map?.(func) ?? [],
+    reduce: (items: any[], func: (prev: any, current: any) => any, init?: any) => items?.reduce?.(func, init ?? null) ?? null,
+    filter: <T>(items: T[], func: any): T[] => items?.filter?.(item => isTruthy(func(item))) ?? [],
 
     // should that be allowed? it's an easy way to cause high CPU, I think
-    range(start: any, end?: any, stride?: any) {
+    range(start: number, end?: number|null, stride?: number|null): number[] {
         if (end == undefined) {
-            end = start;
+            end = start|0;
             start = 0;
+        } else {
+            // integer cast
+            start |= 0;
+            end   |= 0;
         }
         const values: number[] = [];
         if (!stride) {
             stride = 1;
+        } else {
+            // integer cast
+            stride |= 0;
         }
         if (stride < 0) {
             for (let value = start; value > end; value += stride) {
@@ -255,6 +278,9 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         if (listCount > 0) {
             let itemCount = Infinity;
             for (const list of lists) {
+                if (!Array.isArray(list)) {
+                    return [];
+                }
                 if (list.length < itemCount) {
                     itemCount = list.length;
                 }
@@ -273,16 +299,19 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     },
 
     combinations(...lists: readonly any[][]): any[][] {
+        if (!lists.every(Array.isArray)) {
+            return [];
+        }
         const combinations: any[][] = [];
         const listCount = lists.length;
-        const stack: number[] = new Array(listCount);
+        const stack = new Uint32Array(listCount);
         const item: any[] = new Array(listCount);
         let stackPtr = 0;
 
         stack[0] = 0;
         while (stackPtr >= 0) {
             if (stackPtr === listCount) {
-                combinations.push([...item]);
+                combinations.push(item.slice());
                 -- stackPtr;
             } else {
                 const list  = lists[stackPtr];
@@ -371,7 +400,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
         operations = BUILTINS;
     }
 
-    function execIntern(code: JsonListLogic, scope: Scope): any {
+    function execIntern(code: JsonListLogic, scope: Scope, fnargs: any[]): any {
         if (Array.isArray(code)) {
             const op = code[0];
             switch (op) {
@@ -402,23 +431,18 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                                     }
                                 }
 
-                                return (...args: any[]) => {
+                                return function (this: any, ...args: any[]) {
                                     const nestedScope: Scope = Object.create(scope);
-                                    for (let index = 0; index < args.length;) {
-                                        const value = args[index];
-                                        nestedScope[argNames[index]] = value;
-                                        nestedScope[++ index] = value;
+                                    for (let index = 0; index < args.length; ++ index) {
+                                        nestedScope[argNames[index]] = args[index];
                                     }
-                                    return execIntern(body, nestedScope);
+                                    args.unshift(this);
+                                    return execIntern(body, nestedScope, args);
                                 };
                             } else {
-                                return (...args: any[]) => {
-                                    const nestedScope: Scope = Object.create(scope);
-                                    for (let index = 0; index < args.length;) {
-                                        const value = args[index];
-                                        nestedScope[++ index] = value;
-                                    }
-                                    return execIntern(body, nestedScope);
+                                return function (this: any, ...args: any[]) {
+                                    args.unshift(this);
+                                    return execIntern(body, scope, args);
                                 };
                             }
                         }
@@ -426,13 +450,9 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                             throw new SyntaxError(`fn needs 0 to 2 arguments: ${JSON.stringify(code)}`);
                     }
 
-                    return (...args: any[]) => {
-                        const nestedScope: Scope = Object.create(scope);
-                        for (let index = 0; index < args.length;) {
-                            const value = args[index];
-                            nestedScope[++ index] = value;
-                        }
-                        return execIntern(body, nestedScope);
+                    return function (this: any, ...args: any[]) {
+                        args.unshift(this);
+                        return execIntern(body, scope, args);
                     };
                 }
                 case 'var':
@@ -461,18 +481,45 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
 
                     return obj ?? null;
                 }
+                case 'arg':
+                {
+                    let path: any[];
+                    switch (code.length) {
+                        case 0:
+                        case 1:
+                            throw new SyntaxError(`arg needs at least one argument: ${JSON.stringify(code)}`);
+
+                        case 2:
+                            const arg1 = code[1];
+                            path = typeof arg1 === 'number' ? [arg1] : String(arg1).split('.');
+
+                        default:
+                            path = code.slice(1);
+                            break;
+                    }
+
+                    let obj = fnargs;
+                    for (const key of path) {
+                        if (!obj) {
+                            return null;
+                        }
+                        obj = obj[key];
+                    }
+
+                    return obj ?? null;
+                }
                 case 'if':
                     if (code.length < 3) {
                         throw new SyntaxError(`if needs at least 3 arguments: ${JSON.stringify(code)}`);
                     }
 
                     for (let index = 1; index < code.length; ++ index) {
-                        if (isTruthy(execIntern(code[index ++], scope))) {
-                            return execIntern(code[index], scope);
+                        if (isTruthy(execIntern(code[index ++], scope, fnargs))) {
+                            return execIntern(code[index], scope, fnargs);
                         }
                         ++ index;
                         if (index + 1 >= code.length) {
-                            return execIntern(code[index], scope);
+                            return execIntern(code[index], scope, fnargs);
                         }
                     }
                     return null;
@@ -484,12 +531,12 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     }
                     const lastIndex = code.length - 1;
                     for (let index = 1; index < lastIndex; ++ index) {
-                        const value = execIntern(code[index], scope);
+                        const value = execIntern(code[index], scope, fnargs);
                         if (isTruthy(value)) {
                             return value;
                         }
                     }
-                    return execIntern(code[lastIndex], scope);
+                    return execIntern(code[lastIndex], scope, fnargs);
                 }
                 case '??':
                 {
@@ -498,12 +545,12 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     }
                     const lastIndex = code.length - 1;
                     for (let index = 1; index < lastIndex; ++ index) {
-                        const value = execIntern(code[index], scope);
+                        const value = execIntern(code[index], scope, fnargs);
                         if (value != null) {
                             return value;
                         }
                     }
-                    return execIntern(code[lastIndex], scope);
+                    return execIntern(code[lastIndex], scope, fnargs);
                 }
                 case 'and':
                 {
@@ -512,12 +559,12 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     }
                     const lastIndex = code.length - 1;
                     for (let index = 1; index < lastIndex; ++ index) {
-                        const value = execIntern(code[index], scope);
+                        const value = execIntern(code[index], scope, fnargs);
                         if (!isTruthy(value)) {
                             return value;
                         }
                     }
-                    return execIntern(code[lastIndex], scope);
+                    return execIntern(code[lastIndex], scope, fnargs);
                 }
                 case 'partial':
                 {
@@ -529,7 +576,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     let arg1 = code[1];
                     if (Array.isArray(arg1) && allowTuringComplete) {
                         // This makes it turing complete, because you can build a Y combinator with this.
-                        arg1 = execIntern(arg1, scope);
+                        arg1 = execIntern(arg1, scope, fnargs);
                     }
 
                     if (typeof arg1 === 'function') {
@@ -549,7 +596,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     if (code.length > 2) {
                         const boundArgs: any[] = [];
                         for (let index = 2; index < code.length; ++ index) {
-                            boundArgs.push(execIntern(code[index], scope));
+                            boundArgs.push(execIntern(code[index], scope, fnargs));
                         }
                         return (...args: any[]) => func(...boundArgs, ...args);
                     }
@@ -558,7 +605,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                 default:
                     const args: any[] = new Array(code.length - 1);
                     for (let index = 1; index < code.length; ++ index) {
-                        args[index - 1] = execIntern(code[index], scope);
+                        args[index - 1] = execIntern(code[index], scope, fnargs);
                     }
 
                     let func: Function;
@@ -571,7 +618,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                         if (!allowTuringComplete) {
                             throw new SyntaxError(`illegal operation: ${JSON.stringify(code)}`);
                         }
-                        const value = execIntern(op, scope);
+                        const value = execIntern(op, scope, fnargs);
                         if (typeof value !== 'function') {
                             throw new TypeError(`illegal operation: ${JSON.stringify(code)}, not a function: ${JSON.stringify(value)}`);
                         }
@@ -589,7 +636,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
         } else if (code && typeof code === 'object') {
             const obj: {[name: string]: any} = {};
             for (const key in code) {
-                obj[key] = execIntern(code[key], scope);
+                obj[key] = execIntern(code[key], scope, fnargs);
             }
             return obj;
         } else {
@@ -597,7 +644,8 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
         }
     }
 
-    return execIntern(code, input ?? Object.create(null));
+    const scope = input ?? Object.create(null);
+    return execIntern(code, scope, [null, scope]);
 }
 
 export class JsonListLogicError extends Error {
@@ -697,7 +745,7 @@ export function parseLogic(code: string): JsonListLogic {
 
                 case '}':
                     if (value && typeof value === 'object') {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected object');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected object');
                     }
                     stack[stack.length - 1] = [':', top[1], String(value)];
                     break;
@@ -711,13 +759,13 @@ export function parseLogic(code: string): JsonListLogic {
                 case 'fn':
                     const args = top[1];
                     if (args.length > 0 && args[args.length - 1][0] !== 'id') {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                     }
                     args.push(['val', value]);
                     break;
 
                 default:
-                    throw new JsonListLogicSyntaxError(index, code, `illegal parse state: ${top[0]}`);
+                    throw new JsonListLogicSyntaxError(index, code, `Illegal parse state: ${top[0]}`);
             }
         } else {
             stack.push(['val', value]);
@@ -728,7 +776,7 @@ export function parseLogic(code: string): JsonListLogic {
         index = regex.lastIndex;
         const match = regex.exec(code);
         if (!match) {
-            throw new JsonListLogicSyntaxError(index, code, 'unexpected character');
+            throw new JsonListLogicSyntaxError(index, code, 'Unexpected character');
         }
 
         if (match[1] !== undefined) {
@@ -736,7 +784,7 @@ export function parseLogic(code: string): JsonListLogic {
         } else if (match[2] !== undefined) {
             const endIndex = code.indexOf('*/', index);
             if (endIndex < 0) {
-                throw new JsonListLogicSyntaxError(index, code, 'unterminated multiline comment');
+                throw new JsonListLogicSyntaxError(index, code, 'Unterminated multiline comment');
             }
 
             regex.lastIndex = endIndex + 2;
@@ -794,7 +842,7 @@ export function parseLogic(code: string): JsonListLogic {
                     } else if (top[0] === 'fn') {
                         const args = top[1];
                         if (args.length > 0 && args[args.length - 1][0] !== 'id') {
-                            throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                            throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                         }
                         args.push(['id', ident]);
                     } else if (top[0] === ']') {
@@ -802,7 +850,7 @@ export function parseLogic(code: string): JsonListLogic {
                     } else if (top[0] === '}') {
                         pushVal(ident);
                     } else {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected identifier');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected identifier');
                     }
                 }
         } else if (match[7] !== undefined) {
@@ -811,7 +859,7 @@ export function parseLogic(code: string): JsonListLogic {
             // operation
             const op = match[8];
             if (stack.length === 0) {
-                throw new JsonListLogicSyntaxError(index, code, 'unexpected operation');
+                throw new JsonListLogicSyntaxError(index, code, 'Unexpected operation');
             }
             const top = stack[stack.length - 1];
             if (top[0] === ')') {
@@ -819,15 +867,15 @@ export function parseLogic(code: string): JsonListLogic {
                 if (array.length === 1 && array[0] === 'partial') {
                     array.push(op);
                 } else if (array.length > 0) {
-                    throw new JsonListLogicSyntaxError(index, code, 'unexpected operation');
+                    throw new JsonListLogicSyntaxError(index, code, 'Unexpected operation');
                 } else {
                     array.push(op);
                 }
             } else {
-                throw new JsonListLogicSyntaxError(index, code, 'unexpected operation');
+                throw new JsonListLogicSyntaxError(index, code, 'Unexpected operation');
             }
         } else if (match[9] !== undefined) {
-            pushVal(['var', parseInt(match[9])]);
+            pushVal(['arg', parseInt(match[9])]);
         } else if (match[10] !== undefined) {
             const special = match[10];
             switch (special) {
@@ -846,11 +894,11 @@ export function parseLogic(code: string): JsonListLogic {
                 case ':':
                 {
                     if (stack.length === 0) {
-                        throw new JsonListLogicSyntaxError(index, code, `unexpected token`);
+                        throw new JsonListLogicSyntaxError(index, code, `Unexpected token`);
                     }
                     const top = stack[stack.length - 1];
                     if (top[0] !== ':') {
-                        throw new JsonListLogicSyntaxError(index, code, `unexpected token`);
+                        throw new JsonListLogicSyntaxError(index, code, `Unexpected token`);
                     }
                     stack[stack.length - 1] = [':val', top[1], top[2]];
                     break;
@@ -858,11 +906,11 @@ export function parseLogic(code: string): JsonListLogic {
                 case ']':
                 {
                     if (stack.length === 0) {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                     }
                     const top = stack[stack.length - 1];
                     if (top[0] !== ']') {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                     }
                     stack.pop();
                     pushVal(top[1]);
@@ -871,7 +919,7 @@ export function parseLogic(code: string): JsonListLogic {
                 case ')':
                 {
                     if (stack.length === 0) {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                     }
                     const top = stack[stack.length - 1];
                     if (top[0] === 'fn') {
@@ -881,11 +929,11 @@ export function parseLogic(code: string): JsonListLogic {
                         stack.pop();
                         pushVal(['fn', args.map(item => item[1]), kind === 'id' ? ['var', body] : body]);
                     } else if (top[0] !== ')') {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                     } else {
                         const args = top[1];
                         if (args.length === 0) {
-                            throw new JsonListLogicSyntaxError(index, code, 'expected function name or operation');
+                            throw new JsonListLogicSyntaxError(index, code, 'Expected function name or operation');
                         }
                         stack.pop();
                         pushVal(args);
@@ -895,28 +943,30 @@ export function parseLogic(code: string): JsonListLogic {
                 case '}':
                 {
                     if (stack.length === 0) {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                     }
                     const top = stack[stack.length - 1];
                     if (top[0] !== '}') {
-                        throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                        throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
                     }
                     stack.pop();
                     pushVal(top[1]);
                     break;
                 }
                 default:
-                    throw new JsonListLogicSyntaxError(index, code, 'unexpected token');
+                    throw new JsonListLogicSyntaxError(index, code, 'Unexpected token');
             }
+        } else {
+            throw new JsonListLogicSyntaxError(index, code, 'Internal parser error. This is a bug.');
         }
     }
 
     if (stack.length === 0) {
-        throw new JsonListLogicSyntaxError(regex.lastIndex, code, 'unexpected end of file');
+        throw new JsonListLogicSyntaxError(regex.lastIndex, code, 'Unexpected end of file');
     }
 
     if (stack.length > 1 || stack[0][0] !== 'val') {
-        throw new JsonListLogicSyntaxError(regex.lastIndex, code, `unexpected end of file, expected ${stack[stack.length - 1][0]}`);
+        throw new JsonListLogicSyntaxError(regex.lastIndex, code, `Unexpected end of file, expected ${stack[stack.length - 1][0]}`);
     }
 
     return stack[0][1] as JsonListLogic;
@@ -944,15 +994,35 @@ export function formatLogic(code: JsonListLogic, indent?: number|string|null): s
                 case 'var':
                 {
                     const arg1 = code[1];
-                    if (code.length === 2 && typeof arg1 === 'number' && arg1 > 0 && (arg1|0) === arg1) {
-                        buffer.push('$', String(arg1));
+                    if (code.length === 2 && typeof arg1 === 'string' && isValidName(arg1)) {
+                        buffer.push(arg1);
                     } else {
                         buffer.push('(var');
                         for (let index = 1; index < code.length; ++ index) {
                             buffer.push(' ');
                             const item = code[index];
                             if (typeof item === 'string' && isValidName(item)) {
-                                buffer.push(item)
+                                buffer.push(item);
+                            } else {
+                                formatIntern(item, indent);
+                            }
+                        }
+                        buffer.push(')');
+                    }
+                    break;
+                }
+                case 'arg':
+                {
+                    const arg1 = code[1];
+                    if (code.length === 2 && typeof arg1 === 'number' && arg1 >= 0 && (arg1|0) === arg1) {
+                        buffer.push('$', String(arg1));
+                    } else {
+                        buffer.push('(arg');
+                        for (let index = 1; index < code.length; ++ index) {
+                            buffer.push(' ');
+                            const item = code[index];
+                            if (typeof item === 'string' && isValidName(item)) {
+                                buffer.push(item);
                             } else {
                                 formatIntern(item, indent);
                             }
