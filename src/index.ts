@@ -167,7 +167,6 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     '!=':  (a: any, b: any) => a !=  b,
     '!==': (a: any, b: any) => a !== b,
 
-    valueOf: (arg: any) => arg?.valueOf(),
     toString: (arg: any) => String(arg),
     id: (arg: any) => arg,
 
@@ -196,10 +195,8 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
             return obj;
         }
         const values: string[] = [];
-        if (obj) {
-            for (const key in obj) {
-                values.push(obj[key]);
-            }
+        for (const key in obj) {
+            values.push(obj[key]);
         }
         return values;
     }),
@@ -207,10 +204,8 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         if (Array.isArray(obj)) {
             return obj.length === 0;
         }
-        if (obj) {
-            for (const _ in obj) {
-                return false;
-            }
+        for (const _ in obj) {
+            return false;
         }
         return true;
     },
@@ -223,24 +218,40 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     stringify: JSON.stringify,
 
     // array+string
-    includes: (items: any[]|string, item: any) => items?.includes?.(item) ?? false,
-    slice: (items: any[]|string, start: number, end: number) => items?.slice?.(start, end) ?? null,
+    includes: (items: any[]|string|null, item: any) =>
+        items == null ? false :
+        Array.isArray(items) ? items.includes(item) :
+        String(items).includes(item),
+
+    slice: (items: any[]|string, start: number, end: number) =>
+        items == null ? null :
+        Array.isArray(items) ? items.slice(start, end) :
+        String(items).slice(start, end),
+
     length: (items: any[]|string) => items?.length ?? 0,
     head: (items: any[]|string) => items?.[0] ?? null,
-    tail: (items: any[]|string) => items?.slice?.(1),
+    tail: (items: any[]|string) =>
+        items == null ? null :
+        Array.isArray(items) ? items.slice(1) :
+        String(items).slice(1),
 
     // arrays
-    every: (items: any[], func: any) => items?.every?.(item => isTruthy(func(item))) ?? true,
-    some: (items: any[], func: any) => items?.some?.(item => isTruthy(func(item))) ?? false,
-    none: (items: any[], func: any) => !items?.some?.(item => isTruthy(func(item))) ?? true,
+    every: (items: any[], func: any) => Array.isArray(items) ?  items.every(item => isTruthy(func(item))) : true,
+    some:  (items: any[], func: any) => Array.isArray(items) ?  items.some( item => isTruthy(func(item))) : false,
+    none:  (items: any[], func: any) => Array.isArray(items) ? !items.some( item => isTruthy(func(item))) : true,
 
-    join: (items: any[], delim: any) => items?.join?.(delim) ?? '',
+    join: (items: any[], delim: any) => Array.isArray(items) ? items.join(delim) : '',
     concat: (...args: any[]) => [].concat(...args),
     flatten: (items: any[]) => [].concat(...items),
 
-    map: <Item, Result>(items: Item[], func: (arg: Item) => Result): Result[] => items?.map?.(func) ?? [],
-    reduce: (items: any[], func: (prev: any, current: any) => any, init?: any) => items?.reduce?.(func, init ?? null) ?? null,
-    filter: <T>(items: T[], func: any): T[] => items?.filter?.(item => isTruthy(func(item))) ?? [],
+    map: <Item, Result>(items: Item[], func: (arg: Item) => Result): Result[] =>
+        Array.isArray(items) ? items.map(func) : [],
+
+    reduce: (items: any[], func: (prev: any, current: any) => any, init?: any) =>
+        Array.isArray(items) ? items.reduce(func, init ?? null) : null,
+
+    filter: <T>(items: T[], func: any): T[] =>
+        Array.isArray(items) ? items.filter(item => isTruthy(func(item))) : [],
 
     // should that be allowed? it's an easy way to cause high CPU, I think
     range(start: number, end?: number|null, stride?: number|null): number[] {
