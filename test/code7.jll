@@ -1,0 +1,2 @@
+(reduce (zip ["a" "b"] [4 5]) (fn a c (string a (if a ", " "") (var c 0) " -> " (var c 1))) "")
+// result: "a -> 4, b -> 5"

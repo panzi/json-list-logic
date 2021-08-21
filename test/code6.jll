@@ -1,0 +1,8 @@
+{
+    "foo": 123
+    "bar": -Infinity
+    baz: NaN
+    x: (object
+        [(string (var a) " " (var b)) (/ 5 2)]
+    )
+}

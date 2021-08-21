@@ -1,0 +1,1 @@
+(map (var values) (fn x (+ x 1)))
