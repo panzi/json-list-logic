@@ -210,7 +210,9 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         return true;
     },
 
-    hasOwnProperty: Object.prototype.hasOwnProperty.call.bind(Object.prototype.hasOwnProperty),
+    hasOwnProperty: (obj: any, prop: string) =>
+        obj == null ? false :
+        Object.prototype.hasOwnProperty.call(obj, prop),
 
     // string
     substr: (str: any, start: number, length: number) => String(str).substr(start, length),
@@ -240,18 +242,30 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     some:  (items: any[], func: any) => Array.isArray(items) ?  items.some( item => isTruthy(func(item))) : false,
     none:  (items: any[], func: any) => Array.isArray(items) ? !items.some( item => isTruthy(func(item))) : true,
 
-    join: (items: any[], delim: any) => Array.isArray(items) ? items.join(delim) : '',
-    concat: (...args: any[]) => [].concat(...args),
-    flatten: (items: any[]) => [].concat(...items),
+    join: (items: any[], delim: any) =>
+        items == null ? '' :
+        Array.prototype.join.call(items, delim),
 
-    map: <Item, Result>(items: Item[], func: (arg: Item) => Result): Result[] =>
-        Array.isArray(items) ? items.map(func) : [],
+    concat: (...args: any[]) => [].concat(...args),
+    flatten: (items: any[]) => Array.isArray(items) ? [].concat(...items) : items,
+
+    map: (items: any, func: (arg: any) => any): any[] =>
+        items == null ? [] :
+        Array.isArray(items) ? items.map(func) :
+        Array.from(items, func),
 
     reduce: (items: any[], func: (prev: any, current: any) => any, init?: any) =>
-        Array.isArray(items) ? items.reduce(func, init ?? null) : null,
+        items == null ? null :
+        Array.prototype.reduce.call(items, func, init ?? null),
 
     filter: <T>(items: T[], func: any): T[] =>
-        Array.isArray(items) ? items.filter(item => isTruthy(func(item))) : [],
+        items == null ? [] :
+        Array.prototype.filter.call(items, item => isTruthy(func(item))),
+
+    toArray: (items: any) =>
+        items == null ? [] :
+        Array.isArray(items) ? items :
+        Array.from(items),
 
     // should that be allowed? it's an easy way to cause high CPU, I think
     range(start: number, end?: number|null, stride?: number|null): number[] {
