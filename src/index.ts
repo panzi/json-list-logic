@@ -457,6 +457,18 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     now: Date.now,
     parseDate: Date.parse,
 
+    formatDateTime(timestamp: number) {
+        const date = new Date();
+        date.setTime(timestamp);
+        return date.toISOString();
+    },
+
+    formatDate(timestamp: number) {
+        const date = new Date();
+        date.setTime(timestamp);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    },
+
     // numbers
     isFinite:   isFinite,
     isNaN:      isNaN,
