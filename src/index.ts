@@ -457,16 +457,44 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     now: Date.now,
     parseDate: Date.parse,
 
-    formatDateTime(timestamp: number) {
-        const date = new Date();
-        date.setTime(timestamp);
+    formatDateTime(timestamp: any) {
+        const date = toDate(timestamp);
         return date.toISOString();
     },
 
-    formatDate(timestamp: number) {
-        const date = new Date();
-        date.setTime(timestamp);
+    formatDate(timestamp: any) {
+        const date = toDate(timestamp);
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    },
+
+    getYear(timestamp: any) {
+        const date = toDate(timestamp);
+        return date.getFullYear();
+    },
+
+    getMonth(timestamp: any) {
+        const date = toDate(timestamp);
+        return date.getMonth() + 1;
+    },
+
+    getDate(timestamp: any) {
+        const date = toDate(timestamp);
+        return date.getDate();
+    },
+
+    getHours(timestamp: any) {
+        const date = toDate(timestamp);
+        return date.getHours();
+    },
+
+    getMinutes(timestamp: any) {
+        const date = toDate(timestamp);
+        return date.getMinutes();
+    },
+
+    getSeconds(timestamp: any) {
+        const date = toDate(timestamp);
+        return date.getSeconds();
     },
 
     // numbers
@@ -502,6 +530,21 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     sqrt:  Math.sqrt,
     tan:   Math.tan,
 });
+
+function toDate(value: any): Date {
+    if (value instanceof Date) {
+        return value;
+    }
+
+    if (typeof value === 'string') {
+        return new Date(value);
+    }
+
+    const date = new Date();
+    date.setTime(value);
+
+    return date;
+}
 
 export function isTruthy(value: any): boolean {
     if (!value) {
