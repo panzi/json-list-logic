@@ -216,7 +216,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         return true;
     },
 
-    hasOwnProperty: (obj: any, prop: string) =>
+    has: (obj: any, prop: string) =>
         obj == null ? false :
         Object.prototype.hasOwnProperty.call(obj, prop),
 
