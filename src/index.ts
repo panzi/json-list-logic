@@ -220,7 +220,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         obj == null ? false :
         Object.prototype.hasOwnProperty.call(obj, prop),
 
-    merge: (...objs: any[]) => Object.assign({}, ...objs),
+    mergeObjects: (...objs: any[]) => Object.assign({}, ...objs),
 
     // string
     substr: (str: any, start: number, length: number) => String(str).substr(start, length),
