@@ -180,6 +180,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
 
     // object
     keys: Object.keys,
+
     items(obj: any) {
         const items: [string|number, any][] = [];
         if (Array.isArray(obj)) {
@@ -193,6 +194,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         }
         return items;
     },
+
     values: Object.values ?? ((obj: any) => {
         if (Array.isArray(obj)) {
             return obj;
@@ -203,6 +205,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         }
         return values;
     }),
+
     isEmpty(obj: any) {
         if (Array.isArray(obj)) {
             return obj.length === 0;
@@ -216,6 +219,8 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     hasOwnProperty: (obj: any, prop: string) =>
         obj == null ? false :
         Object.prototype.hasOwnProperty.call(obj, prop),
+
+    merge: (...objs: any[]) => Object.assign({}, ...objs),
 
     // string
     substr: (str: any, start: number, length: number) => String(str).substr(start, length),
@@ -233,7 +238,31 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         Array.isArray(items) ? items.slice(start, end) :
         String(items).slice(start, end),
 
-    length: (items: any[]|string) => items?.length ?? 0,
+    length(items: any): number {
+        if (items == null) {
+            return 0;
+        }
+
+        if (Array.isArray(items)) {
+            return items.length;
+        }
+
+        switch (typeof items) {
+            case 'string':
+                return items.length;
+
+            case 'object':
+                let count = 0;
+                for (const _ in items) {
+                    ++ count;
+                }
+                return count;
+
+            default:
+                return 0;
+        }
+    },
+
     head: (items: any[]|string) => items?.[0] ?? null,
     tail: (items: any[]|string) =>
         items == null ? null :
@@ -252,23 +281,84 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     concat: (...args: any[]) => [].concat(...args),
     flatten: (items: any[]) => Array.isArray(items) ? [].concat(...items) : items,
 
-    map: (items: any, func: (arg: any) => any): any[] =>
-        items == null ? [] :
-        Array.isArray(items) ? items.map(func) :
-        Array.from(items, func),
+    map(items: any, func: (arg: any) => any): any[] {
+        if (!items) {
+            return [];
+        }
 
-    reduce: (items: any[], func: (prev: any, current: any) => any, init?: any) =>
-        items == null ? null :
-        Array.prototype.reduce.call(items, func, init ?? null),
+        if (Array.isArray(items)) {
+            return items.map(func);
+        }
 
-    filter: <T>(items: T[], func: any): T[] =>
-        items == null ? [] :
-        Array.prototype.filter.call(items, item => isTruthy(func(item))),
+        if (typeof items === 'string') {
+            return Array.prototype.map.call(items, func);
+        }
 
-    toArray: (items: any) =>
-        items == null ? [] :
-        Array.isArray(items) ? items :
-        Array.from(items),
+        const output = [];
+        for (const key in items) {
+            output.push(func([key, items[key]]));
+        }
+        return output;
+    },
+
+    reduce(items: any, func: (prev: any, current: any) => any, init?: any) {
+        if (!items) {
+            return init ?? null;
+        }
+
+        if (Array.isArray(items)) {
+            return items.reduce(func, init ?? null);
+        }
+
+        if (typeof items === 'string') {
+            return Array.prototype.reduce.call(items, func, init ?? null);
+        }
+
+        let result = init ?? null;
+        for (const key in items) {
+            result = func(result, [key, items[key]]);
+        }
+        return result;
+    },
+
+    filter(items: any, func: (item: any) => boolean) {
+        if (!items) {
+            return [];
+        }
+
+        if (Array.isArray(items)) {
+            return items.filter(func);
+        }
+
+        if (typeof items === 'string') {
+            return Array.prototype.filter.call(items, func);
+        }
+
+        const output: {[key: string]: any} = {};
+        for (const key in items) {
+            const value = items[key];
+            if (func([key, items[key]])) {
+                output[key] = value;
+            }
+        }
+        return output;
+    },
+
+    toArray(items: any): any[] {
+        if (!items) {
+            return [];
+        }
+
+        if (Array.isArray(items)) {
+            return items;
+        }
+
+        const array: [string, any][] = [];
+        for (const key in items) {
+            array.push([key, items[key]]);
+        }
+        return array;
+    },
 
     // should that be allowed? it's an easy way to cause high CPU, I think
     range(start: number, end?: number|null, stride?: number|null): number[] {
