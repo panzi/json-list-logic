@@ -19,6 +19,8 @@ const KEYWORDS = new Set<string>([
     'Infinity', 'NaN', 'null', 'true', 'false',
 ]);
 
+const hasOwnProperty = Object.prototype.hasOwnProperty;
+
 const BUILTINS: Operations = Object.assign(Object.create(null), {
     string: (...args: any[]) => args.join(''),
 
@@ -43,7 +45,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         }
 
         for (const key of path) {
-            if (!obj) {
+            if (!hasOwnProperty.call(obj, key)) {
                 return defaultValue;
             }
             obj = obj[key];
@@ -168,7 +170,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     '==':  (a: any, b: any) => a === b,
     '!=':  (a: any, b: any) => a !== b,
 
-    toString: (arg: any) => typeof arg === 'object' ? JSON.stringify(arg) : String(arg),
+    toString: toString,
     id: (arg: any) => arg,
 
     print(...args: any[]) {
@@ -226,7 +228,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     stringify: JSON.stringify,
 
     // array+string
-    includes: (items: any[]|string|null, item: any) =>
+    'in': (item: any, items: any[]|string|null) =>
         items == null ? false :
         Array.isArray(items) ? items.includes(item) :
         String(items).includes(item),
@@ -265,7 +267,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     tail: (items: any[]|string) =>
         items == null ? null :
         Array.isArray(items) ? items.slice(1) :
-        String(items).slice(1),
+        toString(items).slice(1),
 
     // arrays
     every: (items: any[], func: any) => Array.isArray(items) ?  items.every(item => isTruthy(func(item))) : true,
@@ -274,7 +276,9 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
 
     join: (items: any[], delim: any) =>
         items == null ? '' :
-        Array.prototype.join.call(items, delim),
+        Array.isArray(items) ? items.map(toString).join(delim) :
+        typeof items == 'object' ? Object.keys(items).join(delim) :
+        String(items),
 
     concat: (...args: any[]) => [].concat(...args),
     flatten: (items: any[]) => Array.isArray(items) ? [].concat(...items) : items,
@@ -454,6 +458,22 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     // dates
     now: Date.now,
     parseDate: Date.parse,
+    timestamp(value: any): number {
+        if (value instanceof Date) {
+            return value.getTime();
+        }
+
+        switch (typeof value) {
+            case 'string':
+                return parseDate(value).getTime();
+
+            case 'number':
+                return value;
+
+            default:
+                throw new TypeError(`illegal value for timestamp: ${JSON.stringify(value)}`);
+        }
+    },
 
     formatDateTime(timestamp: any) {
         const date = toDate(timestamp);
@@ -465,35 +485,51 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     },
 
-    getYear(timestamp: any) {
+    yearOf(timestamp: any) {
         const date = toDate(timestamp);
         return date.getFullYear();
     },
 
-    getMonth(timestamp: any) {
+    monthOf(timestamp: any) {
         const date = toDate(timestamp);
         return date.getMonth() + 1;
     },
 
-    getDate(timestamp: any) {
+    dateOf(timestamp: any) {
         const date = toDate(timestamp);
         return date.getDate();
     },
 
-    getHours(timestamp: any) {
+    hoursOf(timestamp: any) {
         const date = toDate(timestamp);
         return date.getHours();
     },
 
-    getMinutes(timestamp: any) {
+    minutesOf(timestamp: any) {
         const date = toDate(timestamp);
         return date.getMinutes();
     },
 
-    getSeconds(timestamp: any) {
+    secondsOf(timestamp: any) {
         const date = toDate(timestamp);
         return date.getSeconds();
     },
+
+    timeSince(value: any) {
+        if (value instanceof Date) {
+            return Date.now() - value.getTime();
+        }
+
+        if (typeof value === 'string') {
+            return Date.now() - parseDate(value).getTime();
+        }
+        return Date.now() - +value;
+    },
+
+    seconds: (count: number) => +count * 1000,
+    minutes: (count: number) => +count * 60 * 1000,
+    hours:   (count: number) => +count * 60 * 60 * 1000,
+    days:    (count: number) => +count * 24 * 60 * 60 * 1000,
 
     // numbers
     isFinite:   isFinite,
@@ -529,13 +565,47 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
     tan:   Math.tan,
 });
 
+function toString(value: any): string {
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
+
+/*
+    /^([0-9]+)-([0-9]{1,2})-([0-9]{1,2})
+    (?:[T ]
+        ([0-9]{1,2})
+        (?:
+            :
+            ([0-9]{1,2})
+            (?:
+                :
+                ([0-9]{1,2}(?:\.[0-9]{3})?)?
+                (Z|([-+])([0-9]{2}):([0-9]{2}))
+            )?
+        )?
+    )?$/
+*/
+const DATETIME_PATTERN = /^([0-9]+)-([0-9]{1,2})-([0-9]{1,2})(?:[T ]([0-9]{1,2})(?::([0-9]{1,2})(?::([0-9]{1,2})((?:\.[0-9]{3})?)?(Z|([-+])([0-9]{2}):([0-9]{2})))?)?)?$/;
+
+// only accept ISO date-times
+function parseDate(value: string): Date {
+    if (typeof value !== 'string') {
+        throw new TypeError(`illegal argument type passed to parseDate(): ${typeof value}`);
+    }
+
+    if (!DATETIME_PATTERN.test(value)) {
+        throw new TypeError(`illegal date-time string: ${JSON.stringify(value)}`);
+    }
+
+    return new Date(value);
+}
+
 function toDate(value: any): Date {
     if (value instanceof Date) {
         return value;
     }
 
     if (typeof value === 'string') {
-        return new Date(value);
+        return parseDate(value);
     }
 
     const date = new Date();
@@ -601,20 +671,20 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
                         case 3:
                         {
                             const arg1 = code[1];
-                            const argNames = Array.isArray(arg1) ? arg1.map(String) : [String(arg1)];
+                            const argNames = Array.isArray(arg1) ? arg1 : [arg1];
                             body = code[2];
 
                             if (argNames.length > 0) {
                                 for (const argName of argNames) {
-                                    if (!isValidName(argName)) {
-                                        throw new SyntaxError(`illegal argument name: ${argName}`);
+                                    if (typeof argName !== 'string' || !isValidName(argName)) {
+                                        throw new SyntaxError(`illegal argument name: ${JSON.stringify(argName)}`);
                                     }
                                 }
 
                                 return function (this: any, ...args: any[]) {
                                     const nestedScope: Scope = Object.create(scope);
                                     for (let index = 0; index < args.length; ++ index) {
-                                        nestedScope[argNames[index]] = args[index];
+                                        nestedScope[argNames[index] as string] = args[index];
                                     }
                                     args.unshift(this);
                                     return execIntern(body, nestedScope, args);
@@ -643,9 +713,6 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
                         case 1:
                             throw new SyntaxError(`var needs at least one argument: ${JSON.stringify(code)}`);
 
-                        case 2:
-                            path = String(code[1]).split('.');
-
                         default:
                             path = code.slice(1);
                             break;
@@ -653,7 +720,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
 
                     let obj = scope;
                     for (const key of path) {
-                        if (!obj) {
+                        if (!hasOwnProperty.call(obj, key)) {
                             return null;
                         }
                         obj = obj[key];
@@ -669,10 +736,6 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
                         case 1:
                             throw new SyntaxError(`arg needs at least one argument: ${JSON.stringify(code)}`);
 
-                        case 2:
-                            const arg1 = code[1];
-                            path = typeof arg1 === 'number' ? [arg1] : String(arg1).split('.');
-
                         default:
                             path = code.slice(1);
                             break;
@@ -680,7 +743,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
 
                     let obj = fnargs;
                     for (const key of path) {
-                        if (!obj) {
+                        if (!hasOwnProperty.call(obj, key)) {
                             return null;
                         }
                         obj = obj[key];
@@ -1011,7 +1074,7 @@ export function parseLogic(code: string): JsonListLogic {
                         const args = top[1];
                         if (args.length === 0 && ident === 'fn') {
                             stack[stack.length - 1] = ['fn', []];
-                        } else if (args[0] === 'var' || (args.length === 1 && args[0] === 'partial')) {
+                        } else if (args[0] === 'var' || args[0] === 'arg' || (args.length === 1 && args[0] === 'partial')) {
                             args.push(ident);
                         } else if (args.length > 0) {
                             args.push(['var', ident]);
