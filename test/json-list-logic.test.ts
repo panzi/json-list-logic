@@ -10,6 +10,7 @@ const code4 = fs.readFileSync(path.join(__dirname, 'code4.jll'), 'utf-8');
 const code5 = fs.readFileSync(path.join(__dirname, 'code5.jll'), 'utf-8');
 const code6 = fs.readFileSync(path.join(__dirname, 'code6.jll'), 'utf-8');
 const code7 = fs.readFileSync(path.join(__dirname, 'code7.jll'), 'utf-8');
+const code8 = fs.readFileSync(path.join(__dirname, 'code8.jll'), 'utf-8');
 
 // TODO: thorough testing
 describe('parse', () => {
@@ -19,7 +20,7 @@ describe('parse', () => {
 
     it(`code2.jll`, () => {
         expect(parseLogic(code2)).toEqual([
-            '===',
+            '==',
             [ 'length', [ 'array', 1, 2, 3 ] ],
             [ 'length', [ 'array', 'ahh', 'bee', 'cee' ] ]
           ]);
@@ -42,7 +43,7 @@ describe('parse', () => {
     });
 
     it(`code7.jll`, () => {
-        expect(parseLogic(code7)).toEqual(["reduce", ["zip", ["array", "a", "b"], ["array", 4, 5]], ["fn", ["a", "c"], ["string", ["var", "a"], ["if", ["var", "a"], ", ", ""], ["var", "c", 0], " -> ", ["var", "c", 1]]], ""]);
+        expect(parseLogic(code7)).toEqual(["reduce", ["zip", ["array", "a", "b"], ["array", 4, 5]], ["fn", ["str", "item"], ["string", ["var", "str"], ["if", ["var", "str"], ", ", ""], ["var", "item", 0], " -> ", ["var", "item", 1]]], ""]);
     });
 });
 
@@ -114,6 +115,11 @@ describe('exec', () => {
             ]
         ];
         expect(execLogic([fib, fib, 12] as any, {}, { allowTuringComplete: true })).toBe(144);
+    });
+
+    it(`hack turing complete?`, () => {
+        const logic = parseLogic(code8);
+        expect(execLogic(logic, {n: 12})).toBe(144);
     });
 });
 

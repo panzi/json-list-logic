@@ -15,7 +15,7 @@ export interface Scope {
 }
 
 const KEYWORDS = new Set<string>([
-    'fn', 'var', 'arg', 'if', 'and', 'or', '??', 'partial',
+    'fn', 'var', 'arg', 'let', 'if', 'and', 'or', '??', 'partial',
     'Infinity', 'NaN', 'null', 'true', 'false',
 ]);
 
@@ -165,12 +165,10 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         return true;
     },
 
-    '==':  (a: any, b: any) => a ==  b,
-    '===': (a: any, b: any) => a === b,
-    '!=':  (a: any, b: any) => a !=  b,
-    '!==': (a: any, b: any) => a !== b,
+    '==':  (a: any, b: any) => a === b,
+    '!=':  (a: any, b: any) => a !== b,
 
-    toString: (arg: any) => String(arg),
+    toString: (arg: any) => typeof arg === 'object' ? JSON.stringify(arg) : String(arg),
     id: (arg: any) => arg,
 
     print(...args: any[]) {
@@ -754,6 +752,18 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     }
                     return execIntern(code[lastIndex], scope, fnargs);
                 }
+                case 'let':
+                {
+                    if (code.length !== 3) {
+                        throw new SyntaxError(`let needs at exactly 2 arguments: ${JSON.stringify(code)}`);
+                    }
+                    const vars = execIntern(code[1], scope, fnargs);
+                    if (!vars || typeof vars !== 'object') {
+                        throw new TypeError(`1st argument to let needs to be an object: ${JSON.stringify(code)}`);
+                    }
+                    const newScope = Object.assign(Object.create(scope), vars);
+                    return execIntern(code[2], newScope, fnargs);
+                }
                 case 'partial':
                 {
                     if (code.length < 2) {
@@ -918,7 +928,7 @@ type ParseState =
     [':val', {[key: string]: unknown}, string];
 
 export function parseLogic(code: string): JsonListLogic {
-    const regex = /(\s+)|(\/\*)|(\/\/[^\n]*(?:\n|$))|"((?:[^"\\]|\\[bfnrt"\/\\]|\\u[0-9a-fA-F]{4})*)"|([-+]?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)|(\b[a-zA-Z][_a-zA-Z0-9]*\b)|([-+]Infinity\b)|([-+<>=!?*\/%!|&~]+)|\$([0-9]+\b)|([(){}:\[\]])/g;
+    const regex = /(\s+)|(;[^\n]*(?:\n|$))|"((?:[^"\\]|\\[bfnrt"\/\\]|\\u[0-9a-fA-F]{4})*)"|([-+]?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)|(\b[a-zA-Z][_a-zA-Z0-9]*\b)|([-+]Infinity\b)|([-+<>=!?*\/%|&~^]+)|\$([0-9]+\b)|([(){}:\[\]])/g;
     const stack: ParseState[] = [];
     let index = 0;
 
@@ -970,26 +980,19 @@ export function parseLogic(code: string): JsonListLogic {
         if (match[1] !== undefined) {
             // skip whitespace
         } else if (match[2] !== undefined) {
-            const endIndex = code.indexOf('*/', index);
-            if (endIndex < 0) {
-                throw new JsonListLogicSyntaxError(index, code, 'Unterminated multiline comment');
-            }
-
-            regex.lastIndex = endIndex + 2;
-        } else if (match[3] !== undefined) {
             // skip comment
-        } else if (match[4] !== undefined) {
+        } else if (match[3] !== undefined) {
             // string
-            const string = match[4].replace(/\\(?:([bfnrt"\/\\])|u([0-9a-fA-F]{4}))/g, (_, esc, uni) =>
+            const string = match[3].replace(/\\(?:([bfnrt"\/\\])|u([0-9a-fA-F]{4}))/g, (_, esc, uni) =>
                 uni ? String.fromCharCode(parseInt(uni, 16)) : ESC_MAP[esc]
             );
             pushVal(string);
-        } else if (match[5] !== undefined) {
+        } else if (match[4] !== undefined) {
             // number
-            pushVal(+match[5]);
-        } else if (match[6] !== undefined) {
+            pushVal(+match[4]);
+        } else if (match[5] !== undefined) {
             // identifier
-            const ident = match[6];
+            const ident = match[5];
             switch (ident) {
                 case 'Infinity':
                     pushVal(Infinity);
@@ -1041,11 +1044,11 @@ export function parseLogic(code: string): JsonListLogic {
                         throw new JsonListLogicSyntaxError(index, code, 'Unexpected identifier');
                     }
                 }
+        } else if (match[6] !== undefined) {
+            pushVal(match[6] === '-Infinity' ? -Infinity : Infinity);
         } else if (match[7] !== undefined) {
-            pushVal(match[7] === '-Infinity' ? -Infinity : Infinity);
-        } else if (match[8] !== undefined) {
             // operation
-            const op = match[8];
+            const op = match[7];
             if (stack.length === 0) {
                 throw new JsonListLogicSyntaxError(index, code, 'Unexpected operation');
             }
@@ -1062,10 +1065,10 @@ export function parseLogic(code: string): JsonListLogic {
             } else {
                 throw new JsonListLogicSyntaxError(index, code, 'Unexpected operation');
             }
+        } else if (match[8] !== undefined) {
+            pushVal(['arg', parseInt(match[8])]);
         } else if (match[9] !== undefined) {
-            pushVal(['arg', parseInt(match[9])]);
-        } else if (match[10] !== undefined) {
-            const special = match[10];
+            const special = match[9];
             switch (special) {
                 case '[':
                     stack.push([']', ['array']]);

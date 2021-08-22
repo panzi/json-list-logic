@@ -1,0 +1,15 @@
+(reduce [n]
+    ; call fibonacci with itself as 1st argument
+    ; we can do that without duplicating the fibonacci implementation
+    ; because it is now bound to a name
+    (fn fib n (reduce [n] fib fib))
+
+    ; fibonacci implementation
+    ; needs itself as 1st argument to be able to make a recursive call
+    (fn fib n (if (< n 2) n
+        (+
+            (reduce [(- n 2)] fib fib)
+            (reduce [(- n 1)] fib fib)
+        )
+    ))
+)

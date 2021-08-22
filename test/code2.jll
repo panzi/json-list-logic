@@ -1,13 +1,11 @@
-(===
-    // single line comment
+(==
+    ; single line comment
     (length (array 1 2 3))
-    /*
-     multiline comment
-     ["foo"] true null
-     (bar 1 2 3)
-     {
-         egg: "spam"
-         "tomato": Infinity
-     }
-    */
+    ; multiline comment
+    ; ["foo"] true null
+    ; (bar 1 2 3)
+    ; {
+    ;     egg: "spam"
+    ;     "tomato": Infinity
+    ; }
     (length ["ahh" "bee" "cee"]))
