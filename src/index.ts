@@ -97,10 +97,13 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
         return value;
     },
 
+    '<<': (a: any, b: any) => a << b,
+    '>>': (a: any, b: any) => a >> b,
+
     '^':  (a: any, b: any) => a ^ b,
     '~':  (arg: any) => ~arg,
     '!':  (arg: any) => !isTruthy(arg),
-    '!!': (arg: any) => isTruthy(arg),
+    '!!': isTruthy,
 
     '<': (...args: any[]) => {
         if (args.length < 2) {
@@ -399,7 +402,22 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
 });
 
 export function isTruthy(value: any): boolean {
-    return Array.isArray(value) ? value.length !== 0 : !!value;
+    if (!value) {
+        return false;
+    }
+
+    if (Array.isArray(value)) {
+        return value.length !== 0;
+    }
+
+    if (typeof value === 'object') {
+        for (const _ in value) {
+            return true;
+        }
+        return false;
+    }
+
+    return !!value;
 }
 
 export function isValidName(name: string): boolean {
