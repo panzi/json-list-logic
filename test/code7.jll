@@ -1,2 +1,2 @@
-(reduce (zip ["a" "b"] [4 5]) (fn a c (string a (if a ", " "") (var c 0) " -> " (var c 1))) "")
+(reduce (zip ["a" "b"] [4 5]) (fn str item (string str (if str ", " "") (var item 0) " -> " (var item 1))) "")
 // result: "a -> 4, b -> 5"

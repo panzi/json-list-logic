@@ -997,42 +997,42 @@ export function parseLogic(code: string): JsonListLogic {
     return stack[0][1] as JsonListLogic;
 }
 
-export function formatLogic(code: JsonListLogic, indent?: number|string|null): string {
-    // TODO: indent
-    const indentStr = typeof indent === 'string' ? indent : ''.padStart(indent ?? 0);
-    const buffer: string[] = [];
+export function formatLogic(code: JsonListLogic, indent?: number|null, maxLineLength: number = 80): string {
+    const tokens: string[] = [];
 
-    function formatIntern(code: JsonListLogic, indent: string): void {
+    function emitToken(str: string): void {
+        tokens.push(str);
+    }
+
+    function emitTokens(code: JsonListLogic): void {
         if (Array.isArray(code)) {
             switch (code[0]) {
                 case 'array':
-                    buffer.push('[');
+                {
+                    emitToken('[');
                     for (let index = 1; index < code.length; ++ index) {
-                        formatIntern(code[index], indent);
-                        if (index + 1 < code.length) {
-                            buffer.push(' ');
-                        }
+                        emitTokens(code[index]);
                     }
-                    buffer.push(']');
+                    emitToken(']');
                     break;
-
+                }
                 case 'var':
                 {
                     const arg1 = code[1];
                     if (code.length === 2 && typeof arg1 === 'string' && isValidName(arg1)) {
-                        buffer.push(arg1);
+                        emitToken(arg1);
                     } else {
-                        buffer.push('(var');
+                        emitToken('(');
+                        emitToken('var');
                         for (let index = 1; index < code.length; ++ index) {
-                            buffer.push(' ');
                             const item = code[index];
                             if (typeof item === 'string' && isValidName(item)) {
-                                buffer.push(item);
+                                emitToken(item);
                             } else {
-                                formatIntern(item, indent);
+                                emitTokens(item);
                             }
                         }
-                        buffer.push(')');
+                        emitToken(')');
                     }
                     break;
                 }
@@ -1040,93 +1040,87 @@ export function formatLogic(code: JsonListLogic, indent?: number|string|null): s
                 {
                     const arg1 = code[1];
                     if (code.length === 2 && typeof arg1 === 'number' && arg1 >= 0 && (arg1|0) === arg1) {
-                        buffer.push('$', String(arg1));
+                        emitToken(`$${arg1}`);
                     } else {
-                        buffer.push('(arg');
+                        emitToken('(');
+                        emitToken('arg');
                         for (let index = 1; index < code.length; ++ index) {
-                            buffer.push(' ');
                             const item = code[index];
                             if (typeof item === 'string' && isValidName(item)) {
-                                buffer.push(item);
+                                emitToken(item);
                             } else {
-                                formatIntern(item, indent);
+                                emitTokens(item);
                             }
                         }
-                        buffer.push(')');
+                        emitToken(')');
                     }
                     break;
                 }
                 case 'fn':
                 {
-                    const arg1 = code[0];
-                    buffer.push('(fn');
+                    emitToken('(');
+                    emitToken('fn');
                     switch (code.length) {
                         case 0:
                         case 1:
                             break;
 
                         case 2:
-                            buffer.push(' ');
-                            formatIntern(code[1], indent);
+                            emitTokens(code[1]);
                             break;
 
                         default:
                             for (const argName of code[1] as string[]) {
-                                buffer.push(' ', argName);
+                                emitToken(argName);
                             }
-                            buffer.push(' ');
-                            formatIntern(code[2], indent);
+                            emitTokens(code[2]);
                             break;
                     }
-                    buffer.push(')');
+                    emitToken(')');
                     break;
                 }
                 default:
                 {
+                    emitToken('(');
                     const arg1 = code[0];
-                    buffer.push('(');
                     if (typeof arg1 === 'string') {
-                        buffer.push(arg1);
+                        emitToken(arg1);
                     } else {
-                        formatIntern(arg1, indent);
+                        emitTokens(arg1);
                     }
                     for (let index = 1; index < code.length; ++ index) {
-                        buffer.push(' ');
-                        formatIntern(code[index], indent);
+                        emitTokens(code[index]);
                     }
-                    buffer.push(')');
+                    emitToken(')');
                     break;
                 }
             }
         } else if (code == null) {
-            buffer.push('null');
+            emitToken('null');
         } else {
             switch (typeof code) {
                 case 'object':
-                    buffer.push('{');
-                    let first = true;
+                    emitToken('{');
                     for (const key in code) {
-                        if (first) {
-                            first = false;
-                        } else {
-                            buffer.push(' ');
-                        }
                         const value = code[key];
                         if (isValidName(key)) {
-                            buffer.push(key);
+                            emitToken(key);
                         } else {
-                            buffer.push(JSON.stringify(key));
+                            emitToken(JSON.stringify(key));
                         }
-                        buffer.push(': ');
-                        formatIntern(value, indent);
+                        emitToken(':');
+                        emitTokens(value);
                     }
-                    buffer.push('}');
+                    emitToken('}');
                     break;
 
                 case 'string':
+                    emitToken(JSON.stringify(code));
+                    break;
+
                 case 'number':
                 case 'boolean':
-                    buffer.push(JSON.stringify(code));
+                    emitToken(String(code));
                     break;
 
                 default:
@@ -1135,7 +1129,121 @@ export function formatLogic(code: JsonListLogic, indent?: number|string|null): s
         }
     }
 
-    formatIntern(code, '');
+    emitTokens(code);
+
+    if (!indent || indent < 0) {
+        indent = 0;
+    }
+
+    const buffer: string[] = [];
+    let indentStack: number[] = [0];
+    let prevToken = '';
+
+    for (let index = 0; index < tokens.length; ++ index) {
+        const token = tokens[index];
+        let currentIndent = indentStack[indentStack.length - 1];
+
+        switch (token) {
+            case '(':
+            case '[':
+            case '{':
+                if (currentIndent === 0) {
+                    if (prevToken !== '' && prevToken !== '(' && prevToken !== '[' && prevToken !== '{') {
+                        buffer.push(' ');
+                    }
+                } else if (prevToken !== '' && prevToken !== '(') {
+                    buffer.push('\n', ''.padStart(currentIndent));
+                }
+                buffer.push(token);
+
+                if (currentIndent + unwrappedLength(tokens, index) > maxLineLength) {
+                    currentIndent += indent;
+                    indentStack.push(currentIndent);
+                } else {
+                    indentStack.push(0);
+                }
+                break;
+
+            case ')':
+            case ']':
+            case '}':
+                const oldIndent = currentIndent;
+                indentStack.pop();
+                currentIndent = indentStack[indentStack.length - 1];
+                if (oldIndent > 0) {
+                    buffer.push('\n', ''.padStart(currentIndent));
+                }
+                buffer.push(token);
+                break;
+
+            default:
+                if (currentIndent === 0) {
+                    if (prevToken !== '' && prevToken !== '(' && prevToken !== '[' && prevToken !== '{') {
+                        buffer.push(' ');
+                    }
+                } else if (prevToken !== '' && prevToken !== '(') {
+                    buffer.push('\n', ''.padStart(currentIndent));
+                }
+                buffer.push(token);
+                break;
+        }
+
+        prevToken = token;
+    }
 
     return buffer.join('');
+}
+
+function unwrappedLength(tokens: string[], index: number) {
+    const token = tokens[index];
+
+    switch (token) {
+        case '(':
+        case '[':
+        case '{':
+            break;
+
+        case undefined:
+            return 0;
+
+        default:
+            return token.length;
+    }
+
+    let length  = 1;
+    let nesting = 1;
+    let wasOpen = true;
+    for (++ index; nesting > 0 && index < tokens.length; ++ index) {
+        const token = tokens[index];
+        switch (token) {
+            case ')':
+            case ']':
+            case '}':
+                ++ length;
+                -- nesting;
+                wasOpen = false;
+                break;
+
+            case '(':
+            case '[':
+            case '{':
+                if (!wasOpen) {
+                    ++ length;
+                }
+                ++ length;
+                ++ nesting;
+                wasOpen = true;
+                break;
+
+            default:
+                if (!wasOpen) {
+                    ++ length;
+                }
+                length += token.length;
+                wasOpen = false;
+                break;
+        }
+    }
+
+    return length;
 }
