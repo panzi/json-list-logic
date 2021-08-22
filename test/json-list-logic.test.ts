@@ -103,7 +103,7 @@ describe('exec', () => {
         expect(execLogic(['map', ['array', 1, 2, 3], ['partial', '-', 2]])).toEqual([1, 0, -1]);
     });
 
-    it(`allowTuringComplete`, () => {
+    it(`fibonacci`, () => {
         const fib = [
             'fn', ['fib', 'n'],
             ['if', ['<', ['var', 'n'], 2],
@@ -114,10 +114,8 @@ describe('exec', () => {
                 ]
             ]
         ];
-        expect(execLogic([fib, fib, 12] as any, {}, { allowTuringComplete: true })).toBe(144);
-    });
+        expect(execLogic([fib, fib, 12] as any, {})).toBe(144);
 
-    it(`hack turing complete?`, () => {
         const logic = parseLogic(code8);
         expect(execLogic(logic, {n: 12})).toBe(144);
     });

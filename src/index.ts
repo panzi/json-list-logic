@@ -567,21 +567,15 @@ export function isValidName(name: string): boolean {
     return /^[a-zA-Z][_a-zA-Z0-9]*/.test(name) && !KEYWORDS.has(name);
 }
 
-export interface Options {
-    operations?: Operations;
-    allowTuringComplete?: boolean;
-}
-
-export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Options): any {
-    const allowTuringComplete = options?.allowTuringComplete ?? false;
+export function execLogic(code: JsonListLogic, input?: Scope|null, customOperations?: Operations): any {
     let operations: Operations;
-    if (options?.operations) {
-        for (const name in options.operations) {
+    if (customOperations) {
+        for (const name in customOperations) {
             if (!isValidName(name)) {
                 throw new Error(`not a valid operation name: ${JSON.stringify(name)}`);
             }
         }
-        operations = Object.assign(Object.create(null), BUILTINS, options.operations);
+        operations = Object.assign(Object.create(null), BUILTINS, customOperations);
     } else {
         operations = BUILTINS;
     }
@@ -772,7 +766,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
 
                     let func: Function;
                     let arg1 = code[1];
-                    if (Array.isArray(arg1) && allowTuringComplete) {
+                    if (Array.isArray(arg1)) {
                         // This makes it turing complete, because you can build a Y combinator with this.
                         arg1 = execIntern(arg1, scope, fnargs);
                     }
@@ -808,14 +802,8 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
 
                     let func: Function;
                     if (typeof op === 'function') {
-                        if (!allowTuringComplete) {
-                            throw new SyntaxError(`illegal operation: ${JSON.stringify(code)}`);
-                        }
                         func = op;
                     } else if (Array.isArray(op)) {
-                        if (!allowTuringComplete) {
-                            throw new SyntaxError(`illegal operation: ${JSON.stringify(code)}`);
-                        }
                         const value = execIntern(op, scope, fnargs);
                         if (typeof value !== 'function') {
                             throw new TypeError(`illegal operation: ${JSON.stringify(code)}, not a function: ${JSON.stringify(value)}`);
