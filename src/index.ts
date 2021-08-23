@@ -845,15 +845,41 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                 }
                 case 'let':
                 {
-                    if (code.length !== 3) {
-                        throw new SyntaxError(`let needs at exactly 2 arguments: ${JSON.stringify(code)}`);
+                    switch (code.length) {
+                        case 3:
+                        {
+                            const vars = execIntern(code[1], scope, fnargs);
+                            if (!vars || typeof vars !== 'object') {
+                                throw new TypeError(`1st argument to 2 argument let needs to be an object: ${JSON.stringify(code)}`);
+                            }
+                            // deliberately not allow fallback-access to parent scope here
+                            // if you want that you need to explicitly name your variables
+                            const newScope =
+                                Object.getPrototypeOf(vars) === null ? vars :
+                                Object.assign(Object.create(null), vars);
+                            return execIntern(code[2], newScope, fnargs);
+                        }
+                        case 4:
+                            const newScope = Object.create(scope);
+                            let letInstr = code;
+                            for (;;) {
+                                const varName = letInstr[1];
+                                if (typeof varName !== 'string') {
+                                    throw new SyntaxError(`1st argument to 3 argument let needs to be a string: ${JSON.stringify(letInstr)}`);
+                                }
+                                newScope[varName] = execIntern(letInstr[2], newScope, fnargs);
+                                const childInstr = letInstr[3];
+                                if (Array.isArray(childInstr) && childInstr.length === 4 && childInstr[0] === 'let') {
+                                    letInstr = childInstr;
+                                } else {
+                                    break;
+                                }
+                            }
+                            return execIntern(letInstr[3], newScope, fnargs);
+
+                        default:
+                            throw new SyntaxError(`let needs 2 to 3 arguments: ${JSON.stringify(code)}`);
                     }
-                    const vars = execIntern(code[1], scope, fnargs);
-                    if (!vars || typeof vars !== 'object') {
-                        throw new TypeError(`1st argument to let needs to be an object: ${JSON.stringify(code)}`);
-                    }
-                    const newScope = Object.assign(Object.create(scope), vars);
-                    return execIntern(code[2], newScope, fnargs);
                 }
                 case 'partial':
                 {
@@ -1232,6 +1258,32 @@ export function parseLogic(code: string): JsonListLogic {
                             throw new JsonListLogicSyntaxError(index, code, 'Expected function name or operation');
                         }
                         stack.pop();
+                        if (args[0] === 'let') {
+                            const arg1 = args[1];
+                            switch (args.length) {
+                                case 3:
+                                    if (typeof arg1 !== 'object') {
+                                        throw new JsonListLogicSyntaxError(index, code, 'Expected non-primitive value as 1st argument to 2 argument let');
+                                    }
+                                    break;
+
+                                case 4:
+                                    if (Array.isArray(arg1)) {
+                                        if (arg1[0] === 'var') {
+                                            if (arg1.length !== 2 || typeof arg1[1] !== 'string') {
+                                                throw new JsonListLogicSyntaxError(index, code, 'Illegal varialbe name declaration in 3 argument let');
+                                            }
+                                            args[1] = arg1[1];
+                                        }
+                                    } else if (typeof arg1 !== 'string') {
+                                        throw new JsonListLogicSyntaxError(index, code, 'Illegal varialbe name declaration in 3 argument let');
+                                    }
+                                    break;
+
+                                default:
+                                    throw new JsonListLogicSyntaxError(index, code, 'Expected 2 to 3 arguments to let');
+                            }
+                        }
                         pushVal(args);
                     }
                     break;
