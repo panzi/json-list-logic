@@ -98,7 +98,7 @@
                 )
                 (fn (timestamp (arg 1 vaccinatedAt)))
             )
-            recoveries: (map
+            infections: (map
                 (filter
                     events
                     (fn (let $1
@@ -123,11 +123,11 @@
             (fn
                 vaccinatedAt
                 (some
-                    recoveries
+                    infections
                     (fn
-                        recoveredAt
+                        infectedAt
                         (>=
-                            (- vaccinatedAt recoveredAt)
+                            (- vaccinatedAt infectedAt)
                             (days 21)
                         )
                     )

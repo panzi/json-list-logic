@@ -114,10 +114,13 @@ describe('exec', () => {
                 ]
             ]
         ];
-        expect(execLogic([fib, fib, 12] as any, {})).toBe(144);
-
         const logic = parseLogic(code8);
-        expect(execLogic(logic, {n: 12})).toBe(144);
+
+        expect(() => execLogic([fib, fib, 12] as any, {})).toThrow(/allowTuringComplete=false/);
+        expect(() => execLogic(logic, {n: 12})).toThrow(/allowTuringComplete=false/);
+
+        expect(execLogic([fib, fib, 12] as any, {}, { allowTuringComplete: true })).toBe(144);
+        expect(execLogic(logic, {n: 12}, { allowTuringComplete: true })).toBe(144);
     });
 });
 

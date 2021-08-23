@@ -559,6 +559,66 @@ describe('test valid QR-codes', () => {
             expect(result).toBe(true);
         });
     });
+
+    it('selects vaccination dates', () => {
+        const rule = `
+        (map
+            (filter
+                events
+                (fn (let $1
+                    (and
+                        (== type "Vaccination")
+                        (in vaccine [
+                            "EU/1/20/1528"
+                            "EU/1/20/1507"
+                            "EU/1/21/1529"
+                            "EU/1/20/1525"
+                        ])
+                        (<=
+                            0
+                            (timeSince vaccinatedAt)
+                            (days 270)
+                        )
+                        (>= doseNumber 1)
+                    )
+                ))
+            )
+            (fn (timestamp (arg 1 vaccinatedAt)))
+        )`;
+
+        const logic = parseLogic(rule);
+        const data = validExamples[validExamples.length - 1].code;
+        const result = execLogic(logic, data);
+        expect(result).toEqual([timeAgo({ days: 179 }).getTime()]);
+    });
+
+    it('selects infection dates', () => {
+        const rule = `
+        (map
+            (filter
+                events
+                (fn (let $1
+                    (and
+                        (== type "Recovery")
+                        (<=
+                            0
+                            (timeSince recoveredAt)
+                        )
+                        (<
+                            (timestamp infectedAt)
+                            (timestamp recoveredAt)
+                        )
+                    )
+                ))
+            )
+            (fn (timestamp (arg 1 infectedAt)))
+        )`;
+
+        const logic = parseLogic(rule);
+        const data = validExamples[validExamples.length - 1].code;
+        const result = execLogic(logic, data);
+        expect(result).toEqual([timeAgo({ days: 200 }).getTime()]);
+    });
 });
 
 describe('test invalid QR-codes', () => {

@@ -21,6 +21,21 @@ const KEYWORDS = new Set<string>([
 
 const hasOwnProperty = Object.prototype.hasOwnProperty;
 
+const NO_SAFE_FNARGS: {[fn: string]: boolean[]} = Object.create(null);
+
+const SAFE_FNARGS: {[fn: string]: boolean[]} = Object.assign(Object.create(null), {
+    id:       [true],
+    toString: [true],
+    isArray:  [true],
+    'typeof': [true],
+    every:    [false, true],
+    some:     [false, true],
+    none:     [false, true],
+    map:      [false, true],
+    reduce:   [false, true, false],
+    filter:   [false, true],
+});
+
 const BUILTINS: Operations = Object.assign(Object.create(null), {
     string: (...args: any[]) => args.join(''),
 
@@ -175,7 +190,7 @@ const BUILTINS: Operations = Object.assign(Object.create(null), {
 
     print(...args: any[]) {
         console.log(...args);
-        return args[0];
+        return args[args.length - 1] ?? null;
     },
 
     // object
@@ -637,15 +652,26 @@ export function isValidName(name: string): boolean {
     return /^[a-zA-Z][_a-zA-Z0-9]*/.test(name) && !KEYWORDS.has(name);
 }
 
-export function execLogic(code: JsonListLogic, input?: Scope|null, customOperations?: Operations): any {
+export interface Options {
+    operations?: Operations;
+    allowTuringComplete?: boolean;
+}
+
+export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Options): any {
+    const allowTuringComplete = !!options?.allowTuringComplete;
     let operations: Operations;
-    if (customOperations) {
-        for (const name in customOperations) {
+    const safeFnargs: {[fn: string]: boolean[]} = allowTuringComplete ?
+        null : Object.assign(Object.create(null), SAFE_FNARGS);
+    if (options?.operations) {
+        for (const name in options.operations) {
             if (!isValidName(name)) {
                 throw new Error(`not a valid operation name: ${JSON.stringify(name)}`);
             }
+            if (!allowTuringComplete) {
+                delete safeFnargs[name];
+            }
         }
-        operations = Object.assign(Object.create(null), BUILTINS, customOperations);
+        operations = Object.assign(Object.create(null), BUILTINS, options.operations);
     } else {
         operations = BUILTINS;
     }
@@ -719,11 +745,19 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
                     }
 
                     let obj = scope;
-                    for (const key of path) {
-                        if (!hasOwnProperty.call(obj, key)) {
-                            return null;
+                    if (obj && path.length > 0) {
+                        // 1st element is from scope which uses prototype chain,
+                        // and has a Object.create(null) at the root, and thus we
+                        // don't want to use hasOwnProperty() on the first element.
+                        obj = obj[path[0]];
+
+                        for (let index = 1; index < path.length; ++ index) {
+                            const key = path[index];
+                            if (!hasOwnProperty.call(obj, key)) {
+                                return null;
+                            }
+                            obj = obj[key];
                         }
-                        obj = obj[key];
                     }
 
                     return obj ?? null;
@@ -831,6 +865,9 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
                     let arg1 = code[1];
                     if (Array.isArray(arg1)) {
                         // This makes it turing complete, because you can build a Y combinator with this.
+                        if (!allowTuringComplete) {
+                            throw new TypeError(`illegal instruction when allowTuringComplete=false: ${JSON.stringify(code)}`);
+                        }
                         arg1 = execIntern(arg1, scope, fnargs);
                     }
 
@@ -859,22 +896,39 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, customOperati
                 }
                 default:
                     const args: any[] = new Array(code.length - 1);
-                    for (let index = 1; index < code.length; ++ index) {
-                        args[index - 1] = execIntern(code[index], scope, fnargs);
-                    }
 
                     let func: Function;
                     if (typeof op === 'function') {
+                        if (!allowTuringComplete) {
+                            // maybe this is fine?
+                            throw new TypeError(`illegal instruction when allowTuringComplete=false: ${JSON.stringify(code)}`);
+                        }
                         func = op;
+                        for (let index = 1; index < code.length; ++ index) {
+                            args[index - 1] = execIntern(code[index], scope, fnargs);
+                        }
                     } else if (Array.isArray(op)) {
+                        if (!allowTuringComplete) {
+                            throw new TypeError(`illegal instruction when allowTuringComplete=false: ${JSON.stringify(code)}`);
+                        }
                         const value = execIntern(op, scope, fnargs);
                         if (typeof value !== 'function') {
                             throw new TypeError(`illegal operation: ${JSON.stringify(code)}, not a function: ${JSON.stringify(value)}`);
                         }
                         func = value;
+                        for (let index = 1; index < code.length; ++ index) {
+                            args[index - 1] = execIntern(code[index], scope, fnargs);
+                        }
                     } else {
                         if (op in operations) {
                             func = operations[op];
+                            for (let index = 1; index < code.length; ++ index) {
+                                const argind = index - 1;
+                                const arg = args[argind] = execIntern(code[index], scope, fnargs);
+                                if (safeFnargs && !safeFnargs[op]?.[argind] && typeof arg === 'function') {
+                                    throw new TypeError(`argument ${index} is of illegal type 'function' when allowTuringComplete=false: ${JSON.stringify(code)}`);
+                                }
+                            }
                         } else {
                             throw new ReferenceError(`function is not defined: ${JSON.stringify(op)}`);
                         }
@@ -903,7 +957,7 @@ export class JsonListLogicError extends Error {
 
         this.name = this.constructor.name;
         if ('captureStackTrace' in Error) {
-            Error.captureStackTrace(this);
+            Error.captureStackTrace(this, this.constructor);
         }
     }
 }
