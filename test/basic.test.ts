@@ -101,6 +101,7 @@ describe('exec', () => {
 
     it(`partial`, () => {
         expect(execLogic(['map', ['array', 1, 2, 3], ['partial', '-', 2]])).toEqual([1, 0, -1]);
+        expect(execLogic(parseLogic('((partial -) 2 n)'), {n: 3}, { allowTuringComplete: true })).toEqual(-1);
     });
 
     it(`fibonacci`, () => {
