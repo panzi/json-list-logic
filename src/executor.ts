@@ -1,10 +1,6 @@
-import { JsonListLogic } from "./logic";
+import { JsonListLogic, Scope } from "./logic";
 import { isValidName, isTruthy, hasOwnProperty } from "./utils";
 import { Operations, _SAFE_FNARGS, _BUILTINS } from "./operations";
-
-export interface Scope {
-    [name: string]: any
-}
 
 export interface Options {
     operations?: Operations;
@@ -286,7 +282,6 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     } else {
                         throw new ReferenceError(`function is not defined: ${JSON.stringify(arg1)}`);
                     }
-
                 }
                 default:
                     const args: any[] = new Array(code.length - 1);

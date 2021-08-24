@@ -5,3 +5,7 @@ export type JsonListLogic =
     boolean |
     {[key: string]: JsonListLogic} |
     [string, ...JsonListLogic[]];
+
+export interface Scope {
+    [name: string]: any
+}
