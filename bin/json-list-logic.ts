@@ -10,8 +10,11 @@ function indent(str: string, width=4): string {
 
 async function main(): Promise<void> {
     // TODO
-    const code = await fs.readFile(process.argv[2], 'utf-8');
-    const input = process.argv.length > 3 ? JSON.parse(await fs.readFile(process.argv[3], 'utf-8')) : undefined;
+    const code = process.argv[2]; // await fs.readFile(process.argv[2], 'utf-8');
+    const input = process.argv.length > 3 ?
+        JSON.parse(process.argv[3]) :
+        // JSON.parse(await fs.readFile(process.argv[3], 'utf-8')) :
+        undefined;
     const logic = parseLogic(code);
 
     console.log('Original Code:')

@@ -95,6 +95,14 @@ describe('exec', () => {
         expect(execLogic(['<', 1, 2, 3])).toBe(true);
     });
 
+    it(`if`, () => {
+        const code = `(if (> a b) 1 (< a b) -1 0)`;
+        const logic = parseLogic(code);
+        expect(execLogic(logic, { a: 10, b: 20 })).toBe(-1);
+        expect(execLogic(logic, { a: 11, b:  5 })).toBe(1);
+        expect(execLogic(logic, { a: -5, b: -5 })).toBe(0);
+    });
+
     it(`fn`, () => {
         expect(execLogic(['map', ['array', 1, 2, 3], ['fn', ['-', ['arg', 1], 2]]])).toEqual([-1, 0, 1]);
     });

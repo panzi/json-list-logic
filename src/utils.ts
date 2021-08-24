@@ -3,6 +3,8 @@ const KEYWORDS = new Set<string>([
     'Infinity', 'NaN', 'null', 'true', 'false',
 ]);
 
+export const hasOwnProperty = Object.prototype.hasOwnProperty;
+
 export function isValidName(name: string): boolean {
     return /^[a-zA-Z][_a-zA-Z0-9]*/.test(name) && !KEYWORDS.has(name);
 }
