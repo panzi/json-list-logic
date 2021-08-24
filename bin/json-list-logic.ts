@@ -1,6 +1,7 @@
 import 'source-map-support/register';
 import { parseLogic, execLogic, formatLogic } from "../src";
-import { promises as fs } from "fs";
+import { compileLogic, execByteCode } from "../src/bytecode";
+// import { promises as fs } from "fs";
 import * as util from "util";
 
 function indent(str: string, width=4): string {
@@ -29,12 +30,21 @@ async function main(): Promise<void> {
     console.log(indent(formatLogic(logic, 4, 25)));
     console.log();
 
+    const compiled = compileLogic(logic);
+    console.log('Byte Code:')
+    console.log(indent(util.inspect(compiled.code, { depth: null, colors: true})));
+    console.log();
+
     console.log('Input:');
     console.log(indent(util.inspect(input, { depth: null, colors: true})));
     console.log();
 
-    console.log('Output:');
+    console.log('Output execLogic():');
     console.log(indent(util.inspect(execLogic(logic, input), { depth: null, colors: true})));
+    console.log();
+
+    console.log('Output execByteCode():');
+    console.log(indent(util.inspect(execByteCode(compiled, input), { depth: null, colors: true})));
     console.log();
 }
 
