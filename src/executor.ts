@@ -214,6 +214,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                             return execIntern(code[2], newScope, fnargs);
                         }
                         case 4:
+                        {
                             const newScope = Object.create(scope);
                             let letInstr = code;
                             for (;;) {
@@ -230,7 +231,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                                 }
                             }
                             return execIntern(letInstr[3], newScope, fnargs);
-
+                        }
                         default:
                             throw new SyntaxError(`let needs 2 to 3 arguments: ${JSON.stringify(code)}`);
                     }
@@ -241,8 +242,7 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                         throw new SyntaxError(`partial needs at least one argument: ${JSON.stringify(code)}`);
                     }
 
-                    let func: Function;
-                    let arg1 = code[1];
+                    let arg1: JsonListLogic|Function = code[1];
                     if (Array.isArray(arg1)) {
                         // This makes it turing complete, because you can build a Y combinator with this.
                         if (!allowTuringComplete) {
@@ -252,27 +252,41 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                     }
 
                     if (typeof arg1 === 'function') {
-                        func = arg1;
+                        const func = arg1;
+                        if (code.length > 2) {
+                            const boundArgs: any[] = [];
+                            for (let index = 2; index < code.length; ++ index) {
+                                const arg = execIntern(code[index], scope, fnargs);
+                                if (!allowTuringComplete && typeof arg === 'function') {
+                                    throw new TypeError(`argument ${index - 1} is of illegal type 'function' when allowTuringComplete=false: ${JSON.stringify(code)}`);
+                                }
+                                boundArgs.push(arg);
+                            }
+                            return (...args: any[]) => func(...boundArgs, ...args);
+                        }
+                        return func;
+                    } else if (typeof arg1 !== 'string') {
+                        throw new SyntaxError(`illegal first argument to partial: ${JSON.stringify(code)}`);
+                    } else if (arg1 in operations) {
+                        const func = operations[arg1];
+
+                        if (code.length > 2) {
+                            const boundArgs: any[] = [];
+                            for (let index = 2; index < code.length; ++ index) {
+                                const arg = execIntern(code[index], scope, fnargs);
+                                const argind = index - 2;
+                                if (safeFnargs && !safeFnargs[op]?.[argind] && typeof arg === 'function') {
+                                    throw new TypeError(`argument ${index - 1} is of illegal type 'function' when allowTuringComplete=false: ${JSON.stringify(code)}`);
+                                }
+                                boundArgs.push(arg);
+                            }
+                            return (...args: any[]) => func(...boundArgs, ...args);
+                        }
+                        return func;
                     } else {
-                        if (typeof arg1 !== 'string') {
-                            throw new ReferenceError(`illegal first argument to partial: ${JSON.stringify(code)}`);
-                        }
-
-                        if (arg1 in operations) {
-                            func = operations[arg1];
-                        } else {
-                            throw new ReferenceError(`function is not defined: ${JSON.stringify(arg1)}`);
-                        }
+                        throw new ReferenceError(`function is not defined: ${JSON.stringify(arg1)}`);
                     }
 
-                    if (code.length > 2) {
-                        const boundArgs: any[] = [];
-                        for (let index = 2; index < code.length; ++ index) {
-                            boundArgs.push(execIntern(code[index], scope, fnargs));
-                        }
-                        return (...args: any[]) => func(...boundArgs, ...args);
-                    }
-                    return func;
                 }
                 default:
                     const args: any[] = new Array(code.length - 1);
@@ -299,19 +313,17 @@ export function execLogic(code: JsonListLogic, input?: Scope|null, options?: Opt
                         for (let index = 1; index < code.length; ++ index) {
                             args[index - 1] = execIntern(code[index], scope, fnargs);
                         }
-                    } else {
-                        if (op in operations) {
-                            func = operations[op];
-                            for (let index = 1; index < code.length; ++ index) {
-                                const argind = index - 1;
-                                const arg = args[argind] = execIntern(code[index], scope, fnargs);
-                                if (safeFnargs && !safeFnargs[op]?.[argind] && typeof arg === 'function') {
-                                    throw new TypeError(`argument ${index} is of illegal type 'function' when allowTuringComplete=false: ${JSON.stringify(code)}`);
-                                }
+                    } else if (op in operations) {
+                        func = operations[op];
+                        for (let index = 1; index < code.length; ++ index) {
+                            const argind = index - 1;
+                            const arg = args[argind] = execIntern(code[index], scope, fnargs);
+                            if (safeFnargs && !safeFnargs[op]?.[argind] && typeof arg === 'function') {
+                                throw new TypeError(`argument ${index} is of illegal type 'function' when allowTuringComplete=false: ${JSON.stringify(code)}`);
                             }
-                        } else {
-                            throw new ReferenceError(`function is not defined: ${JSON.stringify(op)}`);
                         }
+                    } else {
+                        throw new ReferenceError(`function is not defined: ${JSON.stringify(op)}`);
                     }
 
                     return func(...args);
